@@ -557,11 +557,11 @@ class ChempropTests(TestCase):
             # Train
             metric = 'rmse'
             self.train(
-                dataset_type='regression',
-                metric=metric,
-                save_dir=save_dir,
-                model_type=model_type,
-                flags=train_flags
+                dataset_type = 'regression',
+                metric = metric,
+                save_dir = save_dir,
+                model_type = model_type,
+                flags = train_flags
             )
 
             # Check results

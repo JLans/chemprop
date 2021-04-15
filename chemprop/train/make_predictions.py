@@ -39,7 +39,7 @@ def make_predictions(args: PredictArgs, smiles: List[List[str]] = None) -> List[
 
     #set explicit H option and reaction option
     set_explicit_h(train_args.explicit_h)
-    set_reaction(train_args.reaction,train_args.reaction_mode)
+    set_reaction(train_args.reaction, train_args.reaction_mode)
 
     print('Loading data')
     if smiles is not None:

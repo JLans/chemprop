@@ -30,14 +30,14 @@ def set_cache_graph(cache_graph: bool) -> None:
 
 
 def empty_cache():
-    r"""Empties the cache of :class:`~chemprop.features.MolGraph`\ s  and RDKit molecules."""
+    r"""Empties the cache of :class:`~chemprop.features.MolGraph` and RDKit molecules."""
     SMILES_TO_GRAPH.clear()
     SMILES_TO_MOL.clear()
 
 
 # Cache of RDKit molecules
 CACHE_MOL = True
-SMILES_TO_MOL: Dict[str, Union[Chem.Mol,Tuple[Chem.Mol,Chem.Mol]]] = {}
+SMILES_TO_MOL: Dict[str, Union[Chem.Mol, Tuple[Chem.Mol, Chem.Mol]]] = {}
 
 
 def cache_mol() -> bool:
@@ -49,7 +49,7 @@ def set_cache_mol(cache_mol: bool) -> None:
     r"""Sets whether RDKit molecules will be cached."""
     global CACHE_MOL
     CACHE_MOL = cache_mol
-    
+
 
 class MoleculeDatapoint:
     """A :class:`MoleculeDatapoint` contains a single molecule and its associated features and targets."""
@@ -140,9 +140,9 @@ class MoleculeDatapoint:
             self.atom_descriptors, self.atom_features, self.bond_features
 
     @property
-    def mol(self) -> Union[List[Chem.Mol],List[Tuple[Chem.Mol,Chem.Mol]]]:
+    def mol(self) -> Union[List[Chem.Mol], List[Tuple[Chem.Mol, Chem.Mol]]]:
         """Gets the corresponding list of RDKit molecules for the corresponding SMILES list."""
-        mol = make_mols(self.smiles,self.is_reaction,self.is_explicit_h)
+        mol = make_mols(self.smiles, self.is_reaction, self.is_explicit_h)
     
         if cache_mol():
             for s, m in zip(self.smiles, mol):
@@ -246,7 +246,7 @@ class MoleculeDataset(Dataset):
 
         return [d.smiles for d in self._data]
 
-    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol],List[List[Chem.Mol]],List[Tuple[Chem.Mol,Chem.Mol]],List[List[Tuple[Chem.Mol,Chem.Mol]]]]:
+    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol] ,List[List[Chem.Mol]], List[Tuple[Chem.Mol, Chem.Mol]], List[List[Tuple[Chem.Mol, Chem.Mol]]]]:
         """
         Returns a list of the RDKit molecules associated with each :class:`MoleculeDatapoint`.
 
@@ -659,7 +659,7 @@ class MoleculeDataLoader(DataLoader):
         return super(MoleculeDataLoader, self).__iter__()
 
     
-def make_mols(smiles: List[str],reaction: bool, keep_h: bool):
+def make_mols(smiles: List[str], reaction: bool, keep_h: bool):
     """
     Builds a list of RDKit molecules (or a list of tuples of molecules if reaction is True) for a list of smiles.
 
@@ -669,7 +669,7 @@ def make_mols(smiles: List[str],reaction: bool, keep_h: bool):
     :return: List of RDKit molecules or list of tuple of molecules.
     """
     if reaction:
-        mol = [SMILES_TO_MOL[s] if s in SMILES_TO_MOL else (make_mol(s.split(">")[0],keep_h),make_mol(s.split(">")[-1],keep_h)) for s in smiles]
+        mol = [SMILES_TO_MOL[s] if s in SMILES_TO_MOL else (make_mol(s.split(">")[0], keep_h), make_mol(s.split(">")[-1], keep_h)) for s in smiles]
     else:
-        mol = [SMILES_TO_MOL[s] if s in SMILES_TO_MOL else make_mol(s,keep_h) for s in smiles]
+        mol = [SMILES_TO_MOL[s] if s in SMILES_TO_MOL else make_mol(s, keep_h) for s in smiles]
     return mol
