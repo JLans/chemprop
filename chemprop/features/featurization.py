@@ -98,7 +98,7 @@ def set_extra_atom_fdim(extra):
     global EXTRA_ATOM_FDIM
     EXTRA_ATOM_FDIM = extra
 
-    
+
 def get_bond_fdim(atom_messages: bool = False,
                   overwrite_default_bond: bool = False,
                   overwrite_default_atom: bool = False) -> int:

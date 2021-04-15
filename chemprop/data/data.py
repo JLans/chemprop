@@ -143,7 +143,7 @@ class MoleculeDatapoint:
     def mol(self) -> Union[List[Chem.Mol], List[Tuple[Chem.Mol, Chem.Mol]]]:
         """Gets the corresponding list of RDKit molecules for the corresponding SMILES list."""
         mol = make_mols(self.smiles, self.is_reaction, self.is_explicit_h)
-    
+
         if cache_mol():
             for s, m in zip(self.smiles, mol):
                 SMILES_TO_MOL[s] = m
@@ -246,7 +246,7 @@ class MoleculeDataset(Dataset):
 
         return [d.smiles for d in self._data]
 
-    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol] ,List[List[Chem.Mol]], List[Tuple[Chem.Mol, Chem.Mol]], List[List[Tuple[Chem.Mol, Chem.Mol]]]]:
+    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol], List[List[Chem.Mol]], List[Tuple[Chem.Mol, Chem.Mol]], List[List[Tuple[Chem.Mol, Chem.Mol]]]]:
         """
         Returns a list of the RDKit molecules associated with each :class:`MoleculeDatapoint`.
 
