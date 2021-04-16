@@ -1,6 +1,7 @@
 from collections import defaultdict
 import csv
 from logging import Logger
+import logging
 import os
 import sys
 from typing import Callable, Dict, List, Tuple
@@ -13,13 +14,14 @@ from chemprop.args import TrainArgs
 from chemprop.constants import TEST_SCORES_FILE_NAME, TRAIN_LOGGER_NAME
 from chemprop.data import get_data, get_task_names, MoleculeDataset, validate_dataset_type
 from chemprop.utils import create_logger, makedirs, timeit
-from chemprop.features import set_extra_atom_fdim, set_extra_bond_fdim
+from chemprop.features import set_extra_atom_fdim
+from chemprop.models import MoleculeModel
 
 
 @timeit(logger_name=TRAIN_LOGGER_NAME)
 def cross_validate(args: TrainArgs,
-                   train_func: Callable[[TrainArgs, MoleculeDataset, Logger], Dict[str, List[float]]]
-                   ) -> Tuple[float, float]:
+                   train_func: Callable[[TrainArgs, MoleculeDataset, Logger], Dict[str, List[float]]],
+                   model_list: List[MoleculeModel] = None) -> Tuple[float, float]:
     """
     Runs k-fold cross-validation.
 
@@ -29,8 +31,10 @@ def cross_validate(args: TrainArgs,
     :param args: A :class:`~chemprop.args.TrainArgs` object containing arguments for
                  loading data and training the Chemprop model.
     :param train_func: Function which runs training.
+    :param model_list: A list of :class:`~chemprop.models.model.MoleculeModel`.
     :return: A tuple containing the mean and standard deviation performance across folds.
     """
+    logging.root.manager.loggerDict.pop(TRAIN_LOGGER_NAME,None)
     logger = create_logger(name=TRAIN_LOGGER_NAME, save_dir=args.save_dir, quiet=args.quiet)
     if logger is not None:
         debug, info = logger.debug, logger.info
@@ -60,7 +64,6 @@ def cross_validate(args: TrainArgs,
     data = get_data(
         path=args.data_path,
         args=args,
-        smiles_columns=args.smiles_columns,
         logger=logger,
         skip_none_targets=True
     )
@@ -73,9 +76,6 @@ def cross_validate(args: TrainArgs,
     elif args.atom_descriptors == 'feature':
         args.atom_features_size = data.atom_features_size()
         set_extra_atom_fdim(args.atom_features_size)
-    if args.bond_features_path is not None:
-        args.bond_features_size = data.bond_features_size()
-        set_extra_bond_fdim(args.bond_features_size)
 
     debug(f'Number of tasks = {args.num_tasks}')
 
@@ -87,7 +87,7 @@ def cross_validate(args: TrainArgs,
         args.save_dir = os.path.join(save_dir, f'fold_{fold_num}')
         makedirs(args.save_dir)
         data.reset_features_and_targets()
-        model_scores = train_func(args, data, logger)
+        model_scores = train_func(args, data, logger, model_list)
         for metric, scores in model_scores.items():
             all_scores[metric].append(scores)
     all_scores = dict(all_scores)
@@ -147,6 +147,10 @@ def cross_validate(args: TrainArgs,
                                for fold_num in range(args.num_folds)])
         all_preds.to_csv(os.path.join(save_dir, 'test_preds.csv'), index=False)
 
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
+    del logger
     return mean_score, std_score
 
 

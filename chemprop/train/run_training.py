@@ -1,6 +1,7 @@
 from logging import Logger
 import os
 from typing import Dict, List
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,8 @@ from chemprop.utils import build_optimizer, build_lr_scheduler, get_loss_func, l
 
 def run_training(args: TrainArgs,
                  data: MoleculeDataset,
-                 logger: Logger = None) -> Dict[str, List[float]]:
+                 logger: Logger = None,
+                 model_list: List[MoleculeModel] = None) -> Dict[str, List[float]]:
     """
     Loads data, trains a Chemprop model, and returns test scores for the model checkpoint with the highest validation score.
 
@@ -31,6 +33,7 @@ def run_training(args: TrainArgs,
                  loading data and training the Chemprop model.
     :param data: A :class:`~chemprop.data.MoleculeDataset` containing the data.
     :param logger: A logger to record output.
+    :param model_list: A list of :class:`~chemprop.models.model.MoleculeModel`.
     :return: A dictionary mapping each metric in :code:`args.metrics` to a list of values for each task.
 
     """
@@ -45,48 +48,20 @@ def run_training(args: TrainArgs,
     # Split data
     debug(f'Splitting data with seed {args.seed}')
     if args.separate_test_path:
-        test_data = get_data(path=args.separate_test_path,
-                             args=args,
-                             features_path=args.separate_test_features_path,
-                             atom_descriptors_path=args.separate_test_atom_descriptors_path,
-                             bond_features_path=args.separate_test_bond_features_path,
-                             smiles_columns=args.smiles_columns,
+        test_data = get_data(path=args.separate_test_path, args=args, features_path=args.separate_test_features_path,
                              logger=logger)
     if args.separate_val_path:
-        val_data = get_data(path=args.separate_val_path,
-                            args=args,
-                            features_path=args.separate_val_features_path,
-                            atom_descriptors_path=args.separate_val_atom_descriptors_path,
-                            bond_features_path=args.separate_val_bond_features_path,
-                            smiles_columns = args.smiles_columns,
+        val_data = get_data(path=args.separate_val_path, args=args, features_path=args.separate_val_features_path,
                             logger=logger)
 
     if args.separate_val_path and args.separate_test_path:
         train_data = data
     elif args.separate_val_path:
-        train_data, _, test_data = split_data(data=data,
-                                              split_type=args.split_type,
-                                              sizes=(0.8, 0.0, 0.2),
-                                              seed=args.seed,
-                                              num_folds=args.num_folds,
-                                              args=args,
-                                              logger=logger)
+        train_data, _, test_data = split_data(data=data, split_type=args.split_type, sizes=(0.8, 0.0, 0.2), seed=args.seed, num_folds=args.num_folds, args=args, logger=logger)
     elif args.separate_test_path:
-        train_data, val_data, _ = split_data(data=data,
-                                             split_type=args.split_type,
-                                             sizes=(0.8, 0.2, 0.0),
-                                             seed=args.seed,
-                                             num_folds=args.num_folds,
-                                             args=args,
-                                             logger=logger)
+        train_data, val_data, _ = split_data(data=data, split_type=args.split_type, sizes=(0.8, 0.2, 0.0), seed=args.seed, num_folds=args.num_folds, args=args, logger=logger)
     else:
-        train_data, val_data, test_data = split_data(data=data,
-                                                     split_type=args.split_type,
-                                                     sizes=args.split_sizes,
-                                                     seed=args.seed,
-                                                     num_folds=args.num_folds,
-                                                     args=args,
-                                                     logger=logger)
+        train_data, val_data, test_data = split_data(data=data, split_type=args.split_type, sizes=args.split_sizes, seed=args.seed, num_folds=args.num_folds, args=args, logger=logger)
 
     if args.dataset_type == 'classification':
         class_sizes = get_class_sizes(data)
@@ -104,7 +79,7 @@ def run_training(args: TrainArgs,
             train_data=train_data,
             val_data=val_data,
             test_data=test_data,
-            smiles_columns=args.smiles_columns,
+            smiles_columns=args.smiles_columns
         )
 
     if args.features_scaling:
@@ -113,20 +88,6 @@ def run_training(args: TrainArgs,
         test_data.normalize_features(features_scaler)
     else:
         features_scaler = None
-
-    if args.atom_descriptor_scaling and args.atom_descriptors is not None:
-        atom_descriptor_scaler = train_data.normalize_features(replace_nan_token=0, scale_atom_descriptors=True)
-        val_data.normalize_features(atom_descriptor_scaler, scale_atom_descriptors=True)
-        test_data.normalize_features(atom_descriptor_scaler, scale_atom_descriptors=True)
-    else:
-        atom_descriptor_scaler = None
-
-    if args.bond_feature_scaling and args.bond_features_size > 0:
-        bond_feature_scaler = train_data.normalize_features(replace_nan_token=0, scale_bond_features=True)
-        val_data.normalize_features(bond_feature_scaler, scale_bond_features=True)
-        test_data.normalize_features(bond_feature_scaler, scale_bond_features=True)
-    else:
-        bond_feature_scaler = None
 
     args.train_data_size = len(train_data)
 
@@ -192,7 +153,9 @@ def run_training(args: TrainArgs,
             writer = SummaryWriter(logdir=save_dir)
 
         # Load/build model
-        if args.checkpoint_paths is not None:
+        if model_list is not None:
+            model = deepcopy(model_list[model_idx])
+        elif args.checkpoint_paths is not None:
             debug(f'Loading model {model_idx} from {args.checkpoint_paths[model_idx]}')
             model = load_checkpoint(args.checkpoint_paths[model_idx], logger=logger)
         else:
@@ -206,8 +169,7 @@ def run_training(args: TrainArgs,
         model = model.to(args.device)
 
         # Ensure that model is saved in correct location for evaluation if 0 epochs
-        save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
-                        features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
+        save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler, features_scaler, args)
 
         # Optimizers
         optimizer = build_optimizer(model, args)
@@ -217,7 +179,7 @@ def run_training(args: TrainArgs,
 
         # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
-        best_epoch, n_iter = 0, 0
+        best_epoch, n_iter = 0, 0 
         for epoch in trange(args.epochs):
             debug(f'Epoch {epoch}')
 
@@ -261,8 +223,7 @@ def run_training(args: TrainArgs,
             if args.minimize_score and avg_val_score < best_score or \
                     not args.minimize_score and avg_val_score > best_score:
                 best_score, best_epoch = avg_val_score, epoch
-                save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler, features_scaler,
-                                atom_descriptor_scaler, bond_feature_scaler, args)
+                save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler, features_scaler, args)
 
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
