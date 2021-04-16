@@ -14,7 +14,7 @@ from chemprop.args import TrainArgs
 from chemprop.constants import TEST_SCORES_FILE_NAME, TRAIN_LOGGER_NAME
 from chemprop.data import get_data, get_task_names, MoleculeDataset, validate_dataset_type
 from chemprop.utils import create_logger, makedirs, timeit
-from chemprop.features import set_extra_atom_fdim
+from chemprop.features import set_extra_atom_fdim, set_extra_bond_fdim
 from chemprop.models import MoleculeModel
 
 
@@ -64,6 +64,7 @@ def cross_validate(args: TrainArgs,
     data = get_data(
         path=args.data_path,
         args=args,
+        smiles_columns=args.smiles_columns,
         logger=logger,
         skip_none_targets=True
     )
@@ -76,6 +77,9 @@ def cross_validate(args: TrainArgs,
     elif args.atom_descriptors == 'feature':
         args.atom_features_size = data.atom_features_size()
         set_extra_atom_fdim(args.atom_features_size)
+    if args.bond_features_path is not None:
+        args.bond_features_size = data.bond_features_size()
+        set_extra_bond_fdim(args.bond_features_size)
 
     debug(f'Number of tasks = {args.num_tasks}')
 
