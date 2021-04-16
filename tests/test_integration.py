@@ -526,19 +526,19 @@ class ChempropTests(TestCase):
         (
                 'chemprop_reaction',
                 'chemprop',
-                2.05696,
+                2.025709,
                 ['--reaction', '--data_path', os.path.join(TEST_DATA_DIR, 'reaction_regression.csv')]
         ),
         (
                 'chemprop_scaffold_split',
                 'chemprop',
-                1.939067,
+                1.890371,
                 ['--reaction', '--data_path', os.path.join(TEST_DATA_DIR, 'reaction_regression.csv'),'--split_type', 'scaffold_balanced']
         ),
         (
                 'chemprop_morgan_features_generator',
                 'chemprop',
-                2.853836,
+                2.848752,
                 ['--reaction', '--data_path', os.path.join(TEST_DATA_DIR, 'reaction_regression.csv'),'--features_generator', 'morgan']
         ),
         (
