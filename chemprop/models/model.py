@@ -26,8 +26,11 @@ class MoleculeModel(nn.Module):
         self.classification = args.dataset_type == 'classification'
         self.multiclass = args.dataset_type == 'multiclass'
         self.featurizer = featurizer
-
-        self.output_size = args.num_tasks
+        
+        try:
+            self.output_size = args.output_size
+        except:
+            self.output_size = args.num_tasks
         if self.multiclass:
             self.output_size *= args.multiclass_num_classes
 
@@ -38,7 +41,11 @@ class MoleculeModel(nn.Module):
             self.multiclass_softmax = nn.Softmax(dim=2)
 
         self.create_encoder(args)
-        self.create_ffn(args)
+        
+        if type(args.ffn_hidden_size) is tuple:
+            self.create_ffn_from_tuple(args)
+        else:
+            self.create_ffn(args)
 
         initialize_weights(self)
 
@@ -49,6 +56,54 @@ class MoleculeModel(nn.Module):
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
         self.encoder = MPN(args)
+        
+    def create_ffn_from_tuple(self, args: TrainArgs) -> None:
+        """
+        Creates the feed-forward layers for the model.
+
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        self.multiclass = args.dataset_type == 'multiclass'
+        if self.multiclass:
+            self.num_classes = args.multiclass_num_classes
+        if args.features_only:
+            first_linear_dim = args.features_size
+        else:
+            first_linear_dim = args.hidden_size * args.number_of_molecules
+            if args.use_input_features:
+                first_linear_dim += args.features_size
+
+        if args.atom_descriptors == 'descriptor':
+            first_linear_dim += args.atom_descriptors_size
+
+        dropout = nn.Dropout(args.dropout)
+        activation = get_activation_function(args.activation)
+
+        # Create FFN layers
+        if args.ffn_num_layers == 1:
+            ffn = [
+                dropout,
+                nn.Linear(first_linear_dim, self.output_size)
+            ]
+        else:
+            ffn = [
+                dropout,
+                nn.Linear(first_linear_dim, args.ffn_hidden_size[0])
+            ]
+            for i in range(args.ffn_num_layers - 2):
+                ffn.extend([
+                    activation,
+                    dropout,
+                    nn.Linear(args.ffn_hidden_size[i], args.ffn_hidden_size[i+1]),
+                ])
+            ffn.extend([
+                activation,
+                dropout,
+                nn.Linear(args.ffn_hidden_size[-1], self.output_size),
+            ])
+
+        # Create FFN model
+        self.ffn = nn.Sequential(*ffn)
 
     def create_ffn(self, args: TrainArgs) -> None:
         """
