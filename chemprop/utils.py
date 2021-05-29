@@ -497,8 +497,8 @@ def save_smiles_splits(data_path: str,
         if dataset is None:
             continue
 
-        with open(os.path.join(save_dir, f'{name}_smiles.csv'), 'w') as f:
-            writer = csv.writer(f)
+        with open(os.path.join(save_dir, f'{name}_smiles.csv'), 'w', newline='') as f:
+            writer = csv.writer(f)#, lineterminator = '\n')
             if smiles_columns[0] == '':
                 writer.writerow(['smiles'])
             else:
@@ -506,8 +506,8 @@ def save_smiles_splits(data_path: str,
             for smiles in dataset.smiles():
                 writer.writerow(smiles)
 
-        with open(os.path.join(save_dir, f'{name}_full.csv'), 'w') as f:
-            writer = csv.writer(f)
+        with open(os.path.join(save_dir, f'{name}_full.csv'), 'w', newline='') as f:
+            writer = csv.writer(f)#, lineterminator = '\n')
             writer.writerow(smiles_columns + task_names)
             dataset_targets = dataset.targets()
             for i, smiles in enumerate(dataset.smiles()):
@@ -515,8 +515,8 @@ def save_smiles_splits(data_path: str,
 
         dataset_features = dataset.features()
         if features_path is not None:
-            with open(os.path.join(save_dir, f'{name}_features.csv'), 'w') as f:
-                writer = csv.writer(f)
+            with open(os.path.join(save_dir, f'{name}_features.csv'), 'w', newline='') as f:
+                writer = csv.writer(f)#, lineterminator = '\n')
                 writer.writerow(features_header)
                 writer.writerows(dataset_features)
 
