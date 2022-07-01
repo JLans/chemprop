@@ -318,10 +318,12 @@ class MoleculeDataset(Dataset):
 
         :return: A list of 1D numpy arrays containing the features for each molecule or None if there are no features.
         """
-        if len(self._data) == 0 or self._data[0].features is None:
+        if len(self._data) == 0: #modified
+            return []
+        elif self._data[0].features is None:
             return None
-
-        return [d.features for d in self._data]
+        else:
+            return [d.features for d in self._data]
 
     def phase_features(self) -> List[np.ndarray]:
         """
@@ -480,7 +482,7 @@ class MoleculeDataset(Dataset):
 
         return scaler
 
-    def normalize_targets(self) -> StandardScaler:
+    def normalize_targets(self, scaler: StandardScaler = None) -> StandardScaler:
         """
         Normalizes the targets of the dataset using a :class:`~chemprop.data.StandardScaler`.
 
@@ -492,7 +494,8 @@ class MoleculeDataset(Dataset):
         :return: A :class:`~chemprop.data.StandardScaler` fitted to the targets.
         """
         targets = [d.raw_targets for d in self._data]
-        scaler = StandardScaler().fit(targets)
+        if scaler is None:
+            scaler = StandardScaler().fit(targets)
         scaled_targets = scaler.transform(targets).tolist()
         self.set_targets(scaled_targets)
 

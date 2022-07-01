@@ -24,6 +24,8 @@ from chemprop.data import StandardScaler, MoleculeDataset, preprocess_smiles_col
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import NoamLR
 from chemprop.spectra_utils import sid_loss, sid_metric, wasserstein_loss, wasserstein_metric
+import sys
+import inspect
 
 
 def makedirs(path: str, isfile: bool = False) -> None:
@@ -89,7 +91,8 @@ def save_checkpoint(path: str,
 
 def load_checkpoint(path: str,
                     device: torch.device = None,
-                    logger: logging.Logger = None) -> MoleculeModel:
+                    logger: logging.Logger = None,
+                    new_args_dict = {}) -> MoleculeModel:
     """
     Loads a model checkpoint.
 
@@ -108,7 +111,10 @@ def load_checkpoint(path: str,
     args = TrainArgs()
     args.from_dict(vars(state['args']), skip_unsettable=True)
     loaded_state_dict = state['state_dict']
-
+    for key, value in new_args_dict.items():
+        if hasattr(args, key):
+            setattr(args, key, value)
+    
     if device is not None:
         args.device = device
 
@@ -644,8 +650,8 @@ def save_smiles_splits(data_path: str,
         if dataset is None:
             continue
 
-        with open(os.path.join(save_dir, f'{name}_smiles.csv'), 'w') as f:
-            writer = csv.writer(f)
+        with open(os.path.join(save_dir, f'{name}_smiles.csv'), 'w', newline='') as f:
+            writer = csv.writer(f)#, lineterminator = '\n')
             if smiles_columns[0] == '':
                 writer.writerow(['smiles'])
             else:
@@ -653,17 +659,17 @@ def save_smiles_splits(data_path: str,
             for smiles in dataset.smiles():
                 writer.writerow(smiles)
 
-        with open(os.path.join(save_dir, f'{name}_full.csv'), 'w') as f:
-            writer = csv.writer(f)
+        with open(os.path.join(save_dir, f'{name}_full.csv'), 'w', newline='') as f:
+            writer = csv.writer(f)#, lineterminator = '\n')
             writer.writerow(smiles_columns + task_names)
             dataset_targets = dataset.targets()
             for i, smiles in enumerate(dataset.smiles()):
                 writer.writerow(smiles + dataset_targets[i])
 
+        dataset_features = dataset.features()
         if features_path is not None:
-            dataset_features = dataset.features()
-            with open(os.path.join(save_dir, f'{name}_features.csv'), 'w') as f:
-                writer = csv.writer(f)
+            with open(os.path.join(save_dir, f'{name}_features.csv'), 'w', newline='') as f:
+                writer = csv.writer(f)#, lineterminator = '\n')
                 writer.writerow(features_header)
                 writer.writerows(dataset_features)
 

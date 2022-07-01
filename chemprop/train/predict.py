@@ -23,7 +23,7 @@ def predict(model: MoleculeModel,
     model.eval()
 
     preds = []
-
+    
     for batch in tqdm(data_loader, disable=disable_progress_bar, leave=False):
         # Prepare batch
         batch: MoleculeDataset

@@ -2,6 +2,7 @@ import json
 from logging import Logger
 import os
 from typing import Dict, List
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -25,7 +26,8 @@ from chemprop.utils import build_optimizer, build_lr_scheduler, get_loss_func, l
 
 def run_training(args: TrainArgs,
                  data: MoleculeDataset,
-                 logger: Logger = None) -> Dict[str, List[float]]:
+                 logger: Logger = None,
+                 model_list: List[MoleculeModel] = None) -> Dict[str, List[float]]:
     """
     Loads data, trains a Chemprop model, and returns test scores for the model checkpoint with the highest validation score.
 
@@ -33,6 +35,7 @@ def run_training(args: TrainArgs,
                  loading data and training the Chemprop model.
     :param data: A :class:`~chemprop.data.MoleculeDataset` containing the data.
     :param logger: A logger to record output.
+    :param model_list: A list of :class:`~chemprop.models.model.MoleculeModel`.
     :return: A dictionary mapping each metric in :code:`args.metrics` to a list of values for each task.
 
     """
@@ -213,7 +216,9 @@ def run_training(args: TrainArgs,
             writer = SummaryWriter(logdir=save_dir)
 
         # Load/build model
-        if args.checkpoint_paths is not None:
+        if model_list is not None:
+            model = deepcopy(model_list[model_idx])
+        elif args.checkpoint_paths is not None:
             debug(f'Loading model {model_idx} from {args.checkpoint_paths[model_idx]}')
             model = load_checkpoint(args.checkpoint_paths[model_idx], logger=logger)
         else:
@@ -249,7 +254,7 @@ def run_training(args: TrainArgs,
 
         # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
-        best_epoch, n_iter = 0, 0
+        best_epoch, n_iter = 0, 0 
         for epoch in trange(args.epochs):
             debug(f'Epoch {epoch}')
             n_iter = train(
@@ -292,8 +297,8 @@ def run_training(args: TrainArgs,
             if args.minimize_score and avg_val_score < best_score or \
                     not args.minimize_score and avg_val_score > best_score:
                 best_score, best_epoch = avg_val_score, epoch
-                save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler, features_scaler,
-                                atom_descriptor_scaler, bond_feature_scaler, args)
+                save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
+                        features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
 
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')

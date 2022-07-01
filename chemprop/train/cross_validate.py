@@ -2,6 +2,7 @@ from collections import defaultdict
 import csv
 import json
 from logging import Logger
+import logging
 import os
 import sys
 from typing import Callable, Dict, List, Tuple
@@ -16,11 +17,12 @@ from chemprop.data import get_data, get_task_names, MoleculeDataset, validate_da
 from chemprop.utils import create_logger, makedirs, timeit
 from chemprop.features import set_extra_atom_fdim, set_extra_bond_fdim, set_explicit_h, set_adding_hs, set_reaction, reset_featurization_parameters
 
+from chemprop.models import MoleculeModel
 
 @timeit(logger_name=TRAIN_LOGGER_NAME)
 def cross_validate(args: TrainArgs,
-                   train_func: Callable[[TrainArgs, MoleculeDataset, Logger], Dict[str, List[float]]]
-                   ) -> Tuple[float, float]:
+                   train_func: Callable[[TrainArgs, MoleculeDataset, Logger], Dict[str, List[float]]],
+                   model_list: List[MoleculeModel] = None) -> Tuple[float, float]:
     """
     Runs k-fold cross-validation.
 
@@ -30,8 +32,10 @@ def cross_validate(args: TrainArgs,
     :param args: A :class:`~chemprop.args.TrainArgs` object containing arguments for
                  loading data and training the Chemprop model.
     :param train_func: Function which runs training.
+    :param model_list: A list of :class:`~chemprop.models.model.MoleculeModel`.
     :return: A tuple containing the mean and standard deviation performance across folds.
     """
+    logging.root.manager.loggerDict.pop(TRAIN_LOGGER_NAME,None)
     logger = create_logger(name=TRAIN_LOGGER_NAME, save_dir=args.save_dir, quiet=args.quiet)
     if logger is not None:
         debug, info = logger.debug, logger.info
@@ -110,7 +114,7 @@ def cross_validate(args: TrainArgs,
                 model_scores = json.load(f)
         # Otherwise, train the models
         else:
-            model_scores = train_func(args, data, logger)
+            model_scores = train_func(args, data, logger, model_list)
 
         for metric, scores in model_scores.items():
             all_scores[metric].append(scores)
@@ -139,9 +143,12 @@ def cross_validate(args: TrainArgs,
         info(f'Overall test {metric} = {mean_score:.6f} +/- {std_score:.6f}')
 
         if args.show_individual_scores:
-            for task_num, task_name in enumerate(args.task_names):
+            #for task_num, task_name in enumerate(args.task_names):
+            #    info(f'\tOverall test {task_name} {metric} = '
+            #         f'{np.nanmean(scores[:, task_num]):.6f} +/- {np.nanstd(scores[:, task_num]):.6f}')
+            for task_name, score in zip(args.task_names, scores.T):
                 info(f'\tOverall test {task_name} {metric} = '
-                     f'{np.nanmean(scores[:, task_num]):.6f} +/- {np.nanstd(scores[:, task_num]):.6f}')
+                     f'{np.nanmean(score):.6f} +/- {np.nanstd(score):.6f}')
 
     # Save scores
     with open(os.path.join(save_dir, TEST_SCORES_FILE_NAME), 'w') as f:
@@ -156,7 +163,7 @@ def cross_validate(args: TrainArgs,
         if args.dataset_type == 'spectra': # spectra data type has only one score to report
             row = ['spectra']
             for metric, scores in all_scores.items():
-                task_scores = scores[:,0]
+                task_scores = scores[:, 0]
                 mean, std = np.nanmean(task_scores), np.nanstd(task_scores)
                 row += [mean, std] + task_scores.tolist()
             writer.writerow(row)
@@ -164,11 +171,11 @@ def cross_validate(args: TrainArgs,
             for task_num, task_name in enumerate(args.task_names):
                 row = [task_name]
                 for metric, scores in all_scores.items():
-                    task_scores = scores[:, task_num]
-                    mean, std = np.nanmean(task_scores), np.nanstd(task_scores)
-                    row += [mean, std] + task_scores.tolist()
+                    if task_num < scores.shape[1]:
+                        task_scores = scores[:, task_num]
+                        mean, std = np.nanmean(task_scores), np.nanstd(task_scores)
+                        row += [mean, std] + task_scores.tolist()
                 writer.writerow(row)
-
     # Determine mean and std score of main metric
     avg_scores = np.nanmean(all_scores[args.metric], axis=1)
     mean_score, std_score = np.nanmean(avg_scores), np.nanstd(avg_scores)
@@ -179,6 +186,10 @@ def cross_validate(args: TrainArgs,
                                for fold_num in range(args.num_folds)])
         all_preds.to_csv(os.path.join(save_dir, 'test_preds.csv'), index=False)
 
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
+    del logger
     return mean_score, std_score
 
 

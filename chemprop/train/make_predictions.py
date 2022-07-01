@@ -31,9 +31,16 @@ def load_model(args: PredictArgs, generator: bool = False):
 
     update_prediction_args(predict_args=args, train_args=train_args)
     args: Union[PredictArgs, TrainArgs]
-
+    
     # Load model and scalers
-    models = (load_checkpoint(checkpoint_path, device=args.device) for checkpoint_path in args.checkpoint_paths)
+    new_args_dict = {}
+    for key, value in args.as_dict().items():
+        if key in ['custom_func_dir'] and value is not None:
+            new_args_dict.update({key: value})
+
+    models = (load_checkpoint(checkpoint_path, device=args.device
+                              , new_args_dict=new_args_dict
+                              ) for checkpoint_path in args.checkpoint_paths)
     scalers = (load_scalers(checkpoint_path) for checkpoint_path in args.checkpoint_paths)
     if not generator:
         models = list(models)
@@ -42,7 +49,8 @@ def load_model(args: PredictArgs, generator: bool = False):
     return args, train_args, models, scalers, num_tasks, task_names
 
 
-def load_data(args: PredictArgs, smiles: List[List[str]]):
+def load_data(args: PredictArgs, smiles: List[List[str]]
+              , features_list: List[np.ndarray] = None):
     """
     Function to load data from a list of smiles or a file.
 
@@ -57,6 +65,7 @@ def load_data(args: PredictArgs, smiles: List[List[str]]):
         full_data = get_data_from_smiles(
             smiles=smiles,
             skip_invalid_smiles=False,
+            features_list=features_list,
             features_generator=args.features_generator
         )
     else:
@@ -239,7 +248,7 @@ def predict_and_save(args: PredictArgs, train_args: TrainArgs, test_data: Molecu
                     datapoint.row[pred_name+'_epi_unc'] = epi_unc
 
     # Save
-    with open(args.preds_path, 'w') as f:
+    with open(args.preds_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=full_data[0].row.keys())
         writer.writeheader()
 
@@ -264,7 +273,8 @@ def predict_and_save(args: PredictArgs, train_args: TrainArgs, test_data: Molecu
 def make_predictions(args: PredictArgs, smiles: List[List[str]] = None,
                      model_objects: Tuple[PredictArgs, TrainArgs, List[MoleculeModel], List[StandardScaler], int, List[str]] = None,
                      return_invalid_smiles: bool = True,
-                     return_index_dict: bool = False) -> List[List[Optional[float]]]:
+                     return_index_dict: bool = False,
+                     features_list: List[np.ndarray] = None) -> List[List[Optional[float]]]:
     """
     Loads data and a trained model and uses the model to make predictions on the data.
 
@@ -287,7 +297,7 @@ def make_predictions(args: PredictArgs, smiles: List[List[str]] = None,
     set_features(args, train_args)
     
     # Note: to get the invalid SMILES for your data, use the get_invalid_smiles_from_file or get_invalid_smiles_from_list functions from data/utils.py
-    full_data, test_data, test_data_loader, full_to_valid_indices = load_data(args, smiles)
+    full_data, test_data, test_data_loader, full_to_valid_indices = load_data(args, smiles, features_list)
     
     # Edge case if empty list of smiles is provided
     if len(test_data) == 0:

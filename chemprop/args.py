@@ -2,7 +2,7 @@ import json
 import os
 from tempfile import TemporaryDirectory
 import pickle
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from typing_extensions import Literal
 
 import torch
@@ -235,13 +235,14 @@ class TrainArgs(CommonArgs):
     """Path to separate val set, optional."""
     separate_test_path: str = None
     """Path to separate test set, optional."""
+    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles'] = 'random'
+    """Method of splitting the data into train/val/test."""
     spectra_phase_mask_path: str = None
     """Path to a file containing a phase mask array, used for excluding particular regions in spectra predictions."""
     data_weights_path: str = None
     """Path to weights for each molecule in the training data, affecting the relative weight of molecules in the loss function"""
     target_weights: List[float] = None
     """Weights associated with each target, affecting the relative weight of targets in the loss function. Must match the number of target columns."""
-    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles'] = 'random'
     """Method of splitting the data into train/val/test."""
     split_sizes: List[float] = None
     """Split proportions for train/validation/test sets."""
@@ -320,7 +321,7 @@ class TrainArgs(CommonArgs):
     """Centers messages on atoms instead of on bonds."""
     undirected: bool = False
     """Undirected edges (always sum the two relevant bond vectors)."""
-    ffn_hidden_size: int = None
+    ffn_hidden_size: Tuple[int, ...] = None
     """Hidden dim for higher-capacity FFN (defaults to hidden_size)."""
     ffn_num_layers: int = 2
     """Number of layers in FFN after MPN encoding."""
@@ -349,7 +350,7 @@ class TrainArgs(CommonArgs):
     """
     ensemble_size: int = 1
     """Number of models in ensemble."""
-    aggregation: Literal['mean', 'sum', 'norm'] = 'mean'
+    aggregation: Literal['mean', 'sum', 'norm', 'max', 'softmax'] = 'mean'
     """Aggregation scheme for atomic vectors into molecular vectors"""
     aggregation_norm: int = 100
     """For norm aggregation, number by which to divide summed up atomic features"""
@@ -411,6 +412,12 @@ class TrainArgs(CommonArgs):
     """Overwrites the default atom descriptors with the new ones instead of concatenating them"""
     no_bond_features_scaling: bool = False
     """Turn off atom feature scaling."""
+    multi_branch_ffn: str = None
+    """Overites ffn_hidden_size for multi_branch networks
+       Has the format '(300, 200,(8,),(50,50))' 
+       where tuple elementare contain hidden layers for the branches"""
+    loss_weighting: List[float] = None
+    """weighting of the loss function"""
     frzn_ffn_layers: int = 0
     """
     Overwrites weights for the first n layers of the ffn from checkpoint model (specified checkpoint_frzn), 
@@ -422,6 +429,10 @@ class TrainArgs(CommonArgs):
     Determines whether or not to use checkpoint_frzn for just the first encoder.
     Default (False) is to use the checkpoint to freeze all encoders.
     (only relevant for number_of_molecules > 1, where checkpoint model has number_of_molecules = 1)
+    """
+    custom_func_dir: str = None
+    """
+    Directory to custom output function.
     """
 
     def __init__(self, *args, **kwargs) -> None:
@@ -470,7 +481,7 @@ class TrainArgs(CommonArgs):
     @property
     def num_tasks(self) -> int:
         """The number of tasks being trained on."""
-        return len(self.task_names) if self.task_names is not None else 0
+        return len(self.task_names) if self.task_names is not None else self._num_tasks
 
     @property
     def features_size(self) -> int:
@@ -567,6 +578,11 @@ class TrainArgs(CommonArgs):
         # Handle FFN hidden size
         if self.ffn_hidden_size is None:
             self.ffn_hidden_size = self.hidden_size
+        else:
+            if len(self.ffn_hidden_size) > 1:
+                self.ffn_num_layers = len(self.ffn_hidden_size) + 1
+            else:
+                self.ffn_hidden_size = self.ffn_hidden_size[0]
 
         # Handle MPN variants
         if self.atom_messages and self.undirected:
@@ -672,14 +688,43 @@ class TrainArgs(CommonArgs):
         if not self.bond_feature_scaling and self.bond_features_path is None:
             raise ValueError('Bond descriptor scaling is only possible if additional bond features are provided.')
 
-        # normalize target weights
+        #normalize target weights
         if self.target_weights is not None:
             avg_weight = sum(self.target_weights)/len(self.target_weights)
             self.target_weights = [w/avg_weight for w in self.target_weights]
             if min(self.target_weights) < 0:
                 raise ValueError('Provided target weights must be non-negative.')
-
-
+        
+        if self.features_path is not None:
+            features_header = []
+            for features_path in self.features_path:
+                features_header += chemprop.data.utils.get_header(features_path)
+            self.features_size = len(features_header)
+        
+        if self.data_path != 'None':
+            self.task_names = chemprop.data.utils.get_task_names(path=self.data_path, smiles_columns=self.smiles_columns,
+                                 target_columns=self.target_columns, ignore_columns=self.ignore_columns)
+            if self.loss_weighting is not None:
+                assert len(self.loss_weighting) in (
+                        len(self.task_names), 1
+                        ), "argumement --loss_weighting is the wrong length"
+                if len(self.loss_weighting) == 1:
+                    for _ in range(len(self.task_names) - 1):
+                        self.loss_weighting.append(1)
+        
+        if self.multi_branch_ffn is not None:
+            self.ffn_hidden_size = eval(self.multi_branch_ffn)
+            self.ffn_num_layers = [0]
+            for layer in self.ffn_hidden_size:
+                if type(layer) == int:
+                    self.ffn_num_layers[0] += 1
+                else:
+                    self.ffn_num_layers.append(1)
+                    for branch_layer in layer:
+                        self.ffn_num_layers[-1] += 1
+                        
+            self.ffn_num_layers = tuple(self.ffn_num_layers)
+            
 class PredictArgs(CommonArgs):
     """:class:`PredictArgs` includes :class:`CommonArgs` along with additional arguments used for predicting with a Chemprop model."""
 
@@ -693,6 +738,10 @@ class PredictArgs(CommonArgs):
     """Whether to calculate the variance of ensembles as a measure of epistemic uncertainty. If True, the variance is saved as an additional column for each target in the preds_path."""
     individual_ensemble_predictions: bool = False
     """Whether to return the predictions made by each of the individual models rather than the average of the ensemble"""
+    custom_func_dir: str = None
+    """
+    Directory to custom output function.
+    """
 
     @property
     def ensemble_size(self) -> int:

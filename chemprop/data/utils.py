@@ -22,7 +22,6 @@ def preprocess_smiles_columns(path: str,
     """
     Preprocesses the :code:`smiles_columns` variable to ensure that it is a list of column
     headings corresponding to the columns in the data file holding SMILES.
-
     :param path: Path to a CSV file.
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
@@ -56,12 +55,10 @@ def get_task_names(path: str,
                    ignore_columns: List[str] = None) -> List[str]:
     """
     Gets the task names from a data CSV file.
-
     If :code:`target_columns` is provided, returns `target_columns`.
     Otherwise, returns all columns except the :code:`smiles_columns`
     (or the first column, if the :code:`smiles_columns` is None) and
     the :code:`ignore_columns`.
-
     :param path: Path to a CSV file.
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
@@ -88,7 +85,6 @@ def get_task_names(path: str,
 def get_header(path: str) -> List[str]:
     """
     Returns the header of a data CSV file.
-
     :param path: Path to a CSV file.
     :return: A list of strings containing the strings in the comma-separated header.
     """
@@ -101,7 +97,6 @@ def get_header(path: str) -> List[str]:
 def get_data_weights(path: str) -> List[float]:
     """
     Returns the list of data weights for the loss function as stored in a CSV file.
-
     :param path: Path to a CSV file.
     :return: A list of floats containing the data weights.
     """
@@ -126,7 +121,6 @@ def get_smiles(path: str,
                ) -> Union[List[str], List[List[str]]]:
     """
     Returns the SMILES from a data CSV file.
-
     :param path: Path to a CSV file.
     :param smiles_columns: A list of the names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
@@ -158,7 +152,6 @@ def get_smiles(path: str,
 def filter_invalid_smiles(data: MoleculeDataset) -> MoleculeDataset:
     """
     Filters out invalid SMILES.
-
     :param data: A :class:`~chemprop.data.MoleculeDataset`.
     :return: A :class:`~chemprop.data.MoleculeDataset` with only the valid molecules.
     """
@@ -175,7 +168,6 @@ def get_invalid_smiles_from_file(path: str = None,
                ) -> Union[List[str], List[List[str]]]:
     """
     Returns the invalid SMILES from a data CSV file.
-
     :param path: Path to a CSV file.
     :param smiles_columns: A list of the names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
@@ -193,7 +185,6 @@ def get_invalid_smiles_from_file(path: str = None,
 def get_invalid_smiles_from_list(smiles: List[List[str]], reaction: bool = False) -> List[List[str]]:
     """
     Returns the invalid SMILES from a list of lists of SMILES strings.
-
     :param smiles: A list of list of SMILES.
     :param reaction: Boolean whether the SMILES strings are to be treated as a reaction.
     :return: A list of lists of SMILES, for the invalid SMILES among the lists provided.
@@ -230,7 +221,6 @@ def get_data(path: str,
              skip_none_targets: bool = False) -> MoleculeDataset:
     """
     Gets SMILES and target values from a CSV file.
-
     :param path: Path to a CSV file.
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
@@ -320,8 +310,17 @@ def get_data(path: str,
         for i, row in enumerate(tqdm(reader)):
             smiles = [row[c] for c in smiles_columns]
 
-            targets = [float(row[column]) if row[column] not in ['','nan'] else None for column in target_columns]
-
+            #targets = [float(row[column]) if row[column] not in ['','nan'] else None for column in target_columns]
+            targets = []
+            for column in target_columns:
+                if row[column] in ['','nan']:
+                    targets.append(None)
+                else:
+                    try:
+                        targets.append(float(row[column]))
+                    except:
+                        targets.append(row[column])
+            
             # Check whether all targets are None and skip if so
             if skip_none_targets and all(x is None for x in targets):
                 continue
@@ -396,10 +395,10 @@ def get_data(path: str,
 def get_data_from_smiles(smiles: List[List[str]],
                          skip_invalid_smiles: bool = True,
                          logger: Logger = None,
+                         features_list: List[np.ndarray] = None,
                          features_generator: List[str] = None) -> MoleculeDataset:
     """
     Converts a list of SMILES to a :class:`~chemprop.data.MoleculeDataset`.
-
     :param smiles: A list of lists of SMILES with length depending on the number of molecules.
     :param skip_invalid_smiles: Whether to skip and filter out invalid smiles using :func:`filter_invalid_smiles`
     :param logger: A logger for recording output.
@@ -408,13 +407,23 @@ def get_data_from_smiles(smiles: List[List[str]],
     """
     debug = logger.debug if logger is not None else print
 
-    data = MoleculeDataset([
-        MoleculeDatapoint(
-            smiles=smile,
-            row=OrderedDict({'smiles': smile}),
-            features_generator=features_generator
-        ) for smile in smiles
-    ])
+    if features_list is not None:
+        data = MoleculeDataset([
+            MoleculeDatapoint(
+                smiles=smile,
+                row=OrderedDict({'smiles': smile}),
+                features=features,
+                features_generator=features_generator
+            ) for smile, features in zip(smiles, features_list)
+        ])
+    else:
+        data = MoleculeDataset([
+            MoleculeDatapoint(
+                smiles=smile,
+                row=OrderedDict({'smiles': smile}),
+                features_generator=features_generator
+            ) for smile in smiles
+        ])
 
     # Filter out invalid SMILES
     if skip_invalid_smiles:
@@ -439,7 +448,6 @@ def split_data(data: MoleculeDataset,
                                                MoleculeDataset]:
     r"""
     Splits data into training, validation, and test splits.
-
     :param data: A :class:`~chemprop.data.MoleculeDataset`.
     :param split_type: Split type.
     :param sizes: A length-3 tuple with the proportions of data in the train, validation, and test sets.
@@ -595,7 +603,6 @@ def split_data(data: MoleculeDataset,
 def get_class_sizes(data: MoleculeDataset) -> List[List[float]]:
     """
     Determines the proportions of the different classes in a classification dataset.
-
     :param data: A classification :class:`~chemprop.data.MoleculeDataset`.
     :return: A list of lists of class proportions. Each inner list contains the class proportions for a task.
     """
@@ -627,7 +634,6 @@ def get_class_sizes(data: MoleculeDataset) -> List[List[float]]:
 def validate_dataset_type(data: MoleculeDataset, dataset_type: str) -> None:
     """
     Validates the dataset type to ensure the data matches the provided type.
-
     :param data: A :class:`~chemprop.data.MoleculeDataset`.
     :param dataset_type: The dataset type to check.
     """
@@ -645,7 +651,6 @@ def validate_dataset_type(data: MoleculeDataset, dataset_type: str) -> None:
 def validate_data(data_path: str) -> Set[str]:
     """
     Validates a data CSV file, returning a set of errors.
-
     :param data_path: Path to a data CSV file.
     :return: A set of error messages.
     """
